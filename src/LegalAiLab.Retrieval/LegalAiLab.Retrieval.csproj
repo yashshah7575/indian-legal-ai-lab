@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\LegalAiLab.Core\LegalAiLab.Core.csproj" />
+    <ProjectReference Include="..\LegalAiLab.Ingestion\LegalAiLab.Ingestion.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,20 @@
+{
+  "siteModified": false,
+  "reason": "No yashshah.ai source tree was found in the workspace.",
+  "seriesTitle": "Building AI Systems with .NET: From RAG to Agentic Workflows",
+  "placement": "Feature the 12 articles on /publications. Keep the Research page separate. Do not say the articles were peer-reviewed.",
+  "articles": [
+    {"part": 1, "title": "LLM fundamentals in C#", "path": "articles/01/article.md", "lab": "labs/01-llm-fundamentals"},
+    {"part": 2, "title": "Simple RAG over court judgments", "path": "articles/02/article.md", "lab": "labs/02-simple-rag"},
+    {"part": 3, "title": "Advanced legal retrieval", "path": "articles/03/article.md", "lab": "labs/03-advanced-retrieval"},
+    {"part": 4, "title": "Function calling and research tools", "path": "articles/04/article.md", "lab": "labs/04-function-calling"},
+    {"part": 5, "title": "An MCP server in C#", "path": "articles/05/article.md", "lab": "labs/05-mcp-server"},
+    {"part": 6, "title": "A bounded research agent", "path": "articles/06/article.md", "lab": "labs/06-research-agent"},
+    {"part": 7, "title": "Agentic RAG and precedent research", "path": "articles/07/article.md", "lab": "labs/07-agentic-rag"},
+    {"part": 8, "title": "Multi-agent research workflow", "path": "articles/08/article.md", "lab": "labs/08-multi-agent"},
+    {"part": 9, "title": "Event-driven ingestion", "path": "articles/09/article.md", "lab": "labs/09-event-ingestion"},
+    {"part": 10, "title": "Memory and durable execution", "path": "articles/10/article.md", "lab": "labs/10-memory"},
+    {"part": 11, "title": "Evaluation, security, and reliability", "path": "articles/11/article.md", "lab": "labs/11-evaluation"},
+    {"part": 12, "title": "Production architecture and the application", "path": "articles/12/article.md", "lab": "labs/12-production"}
+  ]
+}

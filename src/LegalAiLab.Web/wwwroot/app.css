@@ -1,0 +1,8 @@
+body { font-family: Georgia, serif; margin: 0; color: #1c1917; background: #faf7f2; }
+header { padding: 1rem 1.5rem; background: #1f2933; color: #f8f5ef; }
+header a { color: #f8f5ef; margin-right: 1rem; }
+main { padding: 1.5rem; max-width: 960px; }
+input, button, textarea { font: inherit; }
+article, section { margin-bottom: 1rem; }
+.passage { background: #fff; border: 1px solid #e7e0d6; padding: 0.75rem; margin: 0.5rem 0; }
+.notice { font-size: 0.9rem; color: #57534e; }

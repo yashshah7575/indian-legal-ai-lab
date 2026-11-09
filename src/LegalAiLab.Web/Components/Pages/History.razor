@@ -1,0 +1,30 @@
+@page "/history"
+@inject SessionStore Sessions
+<PageTitle>History</PageTitle>
+@if (_missing)
+{
+    <p>No saved session.</p>
+}
+else if (_state is not null)
+{
+    <p>Recovered stage: @_state.Stage</p>
+    <p>Question: @_state.Question</p>
+    <pre>@System.Text.Json.JsonSerializer.Serialize(_state.Report)</pre>
+}
+else if (string.IsNullOrWhiteSpace(Session))
+{
+    <p>Open a session from a research report link.</p>
+}
+@code {
+    [SupplyParameterFromQuery(Name = "session")] public string? Session { get; set; }
+    private ResearchState? _state;
+    private bool _missing;
+    protected override async Task OnParametersSetAsync()
+    {
+        _missing = false;
+        _state = null;
+        if (string.IsNullOrWhiteSpace(Session)) return;
+        _state = await Sessions.LoadAsync(Session);
+        _missing = _state is null;
+    }
+}

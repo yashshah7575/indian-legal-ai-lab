@@ -1,0 +1,5 @@
+FICTIONAL EDUCATIONAL JUDGMENT. Not a real decision of any court.
+This document exists only so automated tests can check citation handling.
+The fictional court discusses Article 21 of the Constitution of India and states, for the purpose of this fixture, that personal liberty includes an invented "Example Doctrine" that does not exist in Indian law.
+Counsel referred to a nonexistent report styled "FICTIONAL 1999 SYN 999".
+No person should rely on this text.

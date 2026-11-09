@@ -1,0 +1,27 @@
+@page "/search"
+@inject LegalResearchLibrary Library
+<PageTitle>Search</PageTitle>
+<form method="get">
+    <label>Query <input name="q" value="@Q" /></label>
+    <label>Court <input name="court" value="@Court" /></label>
+    <button type="submit">Search</button>
+</form>
+@if (!string.IsNullOrWhiteSpace(Q))
+{
+    var result = Library.SearchCases(Q, "hybrid", 6, new LegalAiLab.Retrieval.SearchFilters { Court = string.IsNullOrWhiteSpace(Court) ? null : Court });
+    if (result.Ok)
+    {
+        @foreach (var passage in result.Value!)
+        {
+            <article class="passage">
+                <a href="@($"/cases/{Uri.EscapeDataString(passage.CaseId)}")">@passage.Title</a>
+                <div>@passage.Citation · @passage.Court · @passage.Year @(passage.IsSynthetic ? "· fictional fixture" : "")</div>
+                <p>@passage.Text</p>
+            </article>
+        }
+    }
+}
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "court")] public string? Court { get; set; }
+}

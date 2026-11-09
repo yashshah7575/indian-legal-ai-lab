@@ -1,0 +1,33 @@
+@page "/cases/{Id}"
+@inject LegalResearchLibrary Library
+<PageTitle>Case</PageTitle>
+@if (Library.Find(Id) is { } record)
+{
+    <h1>@record.Title</h1>
+    <p>@record.Citation · @record.NeutralCitation · @record.DecisionDate</p>
+    <p class="notice">@record.Attribution @record.SourceLicense</p>
+    @if (record.IsSynthetic)
+    {
+        <p>This record is a fictional fixture.</p>
+    }
+    <h2>Extracted text</h2>
+    <pre>@(record.Text is null ? record.ExtractionStatus : record.Text[..Math.Min(2500, record.Text.Length)])</pre>
+    <h2>Citation string matches</h2>
+    var links = Library.FindCitedCases(record.CaseId);
+    @if (links.Ok && links.Value!.Count == 0)
+    {
+        <p>No catalogued case identifier was matched in the extracted text. That is not a holding about precedent.</p>
+    }
+    else if (links.Ok)
+    {
+        @foreach (var link in links.Value!)
+        {
+            <p>@link.MatchedText — @link.Note</p>
+        }
+    }
+}
+else
+{
+    <p>Unknown case.</p>
+}
+@code { [Parameter] public string Id { get; set; } = ""; }

@@ -1,0 +1,10 @@
+@page "/ingest"
+@inject LegalResearchLibrary Library
+<PageTitle>Ingestion</PageTitle>
+<p>Documents in the local manifest. PDF bytes for the larger judgments are not vendored.</p>
+<ul>
+@foreach (var record in Library.Records)
+{
+    <li>@record.CaseId — @record.ExtractionStatus — <a href="@($"/cases/{Uri.EscapeDataString(record.CaseId)}")">@record.Title</a></li>
+}
+</ul>
