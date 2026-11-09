@@ -4,4 +4,4 @@
 dotnet run --project labs/05-mcp-server
 ```
 
-Article: `articles/05/article.md`.
+The write-up is on the site: https://yashshah.ai/blog/mcp-server-in-csharp

@@ -4,4 +4,4 @@
 dotnet run --project labs/10-memory
 ```
 
-Article: `articles/10/article.md`.
+The write-up is on the site: https://yashshah.ai/blog/agent-memory-durable-execution

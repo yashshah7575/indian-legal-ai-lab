@@ -29,7 +29,7 @@ Source: [Indian Supreme Court Judgments on AWS](https://registry.opendata.aws/in
 
 ## Layout
 
-- `articles/01`–`articles/12` — the series **Building AI Systems with .NET: From RAG to Agentic Workflows**
+- Write-ups for the twelve labs are published on https://yashshah.ai/publications
 - `labs/01-llm-fundamentals` through `labs/12-production`
 - `src/LegalAiLab.*` — core, ingestion, retrieval, MCP tools, agent, workflow, API, Blazor
 - `docs/evaluations/results.md` — commands that were actually run

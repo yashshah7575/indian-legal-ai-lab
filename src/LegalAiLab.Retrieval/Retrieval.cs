@@ -3,64 +3,36 @@ using LegalAiLab.Ingestion;
 
 namespace LegalAiLab.Retrieval;
 
+public sealed record IndexedChunk(TextChunk Chunk, JudgmentRecord Record, float[] Vector);
+
 public sealed class HashEmbeddingGenerator
 {
     public const int Dimensions = 64;
+    private readonly TextTokenizer _tokenizer = new();
+    private readonly VectorMath _math = new();
 
     public float[] Embed(string text)
     {
         var vector = new float[Dimensions];
-        var tokens = Tokenize(text);
-        foreach (var token in tokens)
+        foreach (var token in _tokenizer.Tokenize(text))
         {
-            var hash = 17;
-            foreach (var ch in token)
-            {
-                hash = unchecked((hash * 31) + ch);
-            }
-
-            var index = (hash & int.MaxValue) % Dimensions;
-            vector[index] += 1f;
+            vector[Bucket(token)] += 1f;
         }
 
-        var norm = Math.Sqrt(vector.Sum(v => v * v));
-        if (norm == 0)
-        {
-            return vector;
-        }
-
-        for (var i = 0; i < vector.Length; i++)
-        {
-            vector[i] /= (float)norm;
-        }
-
-        return vector;
+        return _math.Normalize(vector);
     }
 
-    public static IEnumerable<string> Tokenize(string text)
+    public static IEnumerable<string> Tokenize(string text) => new TextTokenizer().Tokenize(text);
+
+    private static int Bucket(string token)
     {
-        var current = new List<char>();
-        foreach (var ch in text.ToLowerInvariant())
+        var hash = 17;
+        foreach (var ch in token)
         {
-            if (char.IsLetterOrDigit(ch))
-            {
-                current.Add(ch);
-            }
-            else if (current.Count > 2)
-            {
-                yield return new string(current.ToArray());
-                current.Clear();
-            }
-            else
-            {
-                current.Clear();
-            }
+            hash = unchecked((hash * 31) + ch);
         }
 
-        if (current.Count > 2)
-        {
-            yield return new string(current.ToArray());
-        }
+        return (hash & int.MaxValue) % Dimensions;
     }
 }
 
@@ -75,7 +47,11 @@ public sealed class SearchFilters
 public sealed class LegalIndex
 {
     private readonly HashEmbeddingGenerator _embeddings = new();
-    private readonly List<(TextChunk Chunk, JudgmentRecord Record, float[] Vector)> _rows = [];
+    private readonly KeywordScorer _keywords = new();
+    private readonly VectorMath _math = new();
+    private readonly IndexedChunkFilter _filter = new();
+    private readonly PassageFormatter _formatter = new();
+    private readonly List<IndexedChunk> _rows = [];
 
     public static LegalIndex FromRecords(IEnumerable<JudgmentRecord> records)
     {
@@ -92,42 +68,21 @@ public sealed class LegalIndex
     {
         foreach (var chunk in TextChunker.Chunk(record))
         {
-            _rows.RemoveAll(r => r.Chunk.ChunkId == chunk.ChunkId);
-            _rows.Add((chunk, record, _embeddings.Embed(chunk.Text)));
+            _rows.RemoveAll(row => row.Chunk.ChunkId == chunk.ChunkId);
+            _rows.Add(new IndexedChunk(chunk, record, _embeddings.Embed(chunk.Text)));
         }
     }
 
     public IReadOnlyList<RetrievedPassage> Search(string query, string method, int take = 5, SearchFilters? filters = null)
     {
-        var rows = Apply(filters);
-        method = method.ToLowerInvariant();
-        IEnumerable<(double Score, TextChunk Chunk, JudgmentRecord Record)> scored = method switch
-        {
-            "keyword" => rows.Select(r => (Keyword(query, r.Chunk.Text), r.Chunk, r.Record)),
-            "vector" => ScoreVector(query, rows),
-            "hybrid" => ScoreHybrid(query, rows),
-            _ => throw new ArgumentException($"Unknown retrieval method '{method}'.")
-        };
-
+        var rows = _filter.Apply(_rows, filters);
+        var normalized = method.ToLowerInvariant();
+        var scored = Score(query, normalized, rows);
         return scored
-            .Where(s => s.Score > 0)
-            .OrderByDescending(s => s.Score)
+            .Where(row => row.Score > 0)
+            .OrderByDescending(row => row.Score)
             .Take(take)
-            .Select(s => new RetrievedPassage
-            {
-                CaseId = s.Record.CaseId,
-                Citation = s.Record.Citation,
-                Title = s.Record.Title,
-                Court = s.Record.Court,
-                Year = s.Record.Year,
-                IsSynthetic = s.Record.IsSynthetic,
-                ChunkId = s.Chunk.ChunkId,
-                Start = s.Chunk.Start,
-                End = s.Chunk.End,
-                Text = Trim(s.Chunk.Text),
-                Score = s.Score,
-                Method = method
-            })
+            .Select(row => _formatter.ToPassage(row.Record, row.Chunk, row.Score, normalized))
             .ToList();
     }
 
@@ -137,78 +92,38 @@ public sealed class LegalIndex
         return "[" + string.Join(",", values) + "]";
     }
 
-    private List<(TextChunk Chunk, JudgmentRecord Record, float[] Vector)> Apply(SearchFilters? filters)
+    public static double Keyword(string query, string text) => new KeywordScorer().Score(query, text);
+
+    public static double Cosine(float[] left, float[] right) => new VectorMath().Cosine(left, right);
+
+    private IEnumerable<(double Score, TextChunk Chunk, JudgmentRecord Record)> Score(string query, string method, List<IndexedChunk> rows)
     {
-        IEnumerable<(TextChunk Chunk, JudgmentRecord Record, float[] Vector)> query = _rows;
-        if (filters?.Court is not null)
+        return method switch
         {
-            query = query.Where(r => r.Record.Court.Contains(filters.Court, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (filters?.Year is not null)
-        {
-            query = query.Where(r => r.Record.Year == filters.Year);
-        }
-
-        if (filters?.CaseId is not null)
-        {
-            query = query.Where(r => r.Record.CaseId.Equals(filters.CaseId, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (filters?.Synthetic is not null)
-        {
-            query = query.Where(r => r.Record.IsSynthetic == filters.Synthetic);
-        }
-
-        return query.ToList();
+            "keyword" => rows.Select(row => (_keywords.Score(query, row.Chunk.Text), row.Chunk, row.Record)),
+            "vector" => ScoreVector(query, rows),
+            "hybrid" => ScoreHybrid(query, rows),
+            _ => throw new ArgumentException($"Unknown retrieval method '{method}'.")
+        };
     }
 
-    private IEnumerable<(double Score, TextChunk Chunk, JudgmentRecord Record)> ScoreVector(string query, List<(TextChunk Chunk, JudgmentRecord Record, float[] Vector)> rows)
+    private IEnumerable<(double Score, TextChunk Chunk, JudgmentRecord Record)> ScoreVector(string query, List<IndexedChunk> rows)
     {
-        var q = _embeddings.Embed(query);
-        return rows.Select(r => (Cosine(q, r.Vector), r.Chunk, r.Record));
+        var embedded = _embeddings.Embed(query);
+        return rows.Select(row => (_math.Cosine(embedded, row.Vector), row.Chunk, row.Record));
     }
 
-    private IEnumerable<(double Score, TextChunk Chunk, JudgmentRecord Record)> ScoreHybrid(string query, List<(TextChunk Chunk, JudgmentRecord Record, float[] Vector)> rows)
+    private IEnumerable<(double Score, TextChunk Chunk, JudgmentRecord Record)> ScoreHybrid(string query, List<IndexedChunk> rows)
     {
-        var keywordScores = rows.Select(r => Keyword(query, r.Chunk.Text)).ToList();
+        var keywordScores = rows.Select(row => _keywords.Score(query, row.Chunk.Text)).ToList();
         var max = keywordScores.DefaultIfEmpty(0).Max();
-        var q = _embeddings.Embed(query);
+        var embedded = _embeddings.Embed(query);
         for (var i = 0; i < rows.Count; i++)
         {
             var keyword = max <= 0 ? 0 : keywordScores[i] / max;
-            var vector = Cosine(q, rows[i].Vector);
+            var vector = _math.Cosine(embedded, rows[i].Vector);
             yield return ((0.55 * keyword) + (0.45 * vector), rows[i].Chunk, rows[i].Record);
         }
-    }
-
-    public static double Keyword(string query, string text)
-    {
-        var tokens = HashEmbeddingGenerator.Tokenize(query).Distinct().ToList();
-        if (tokens.Count == 0)
-        {
-            return 0;
-        }
-
-        var hay = text.ToLowerInvariant();
-        return tokens.Count(t => hay.Contains(t, StringComparison.Ordinal));
-    }
-
-    public static double Cosine(float[] a, float[] b)
-    {
-        double dot = 0;
-        for (var i = 0; i < a.Length; i++)
-        {
-            dot += a[i] * b[i];
-        }
-
-        return dot;
-    }
-
-    private static string Trim(string text)
-    {
-        var flat = string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        return flat.Length <= 420 ? flat : flat[..420] + "…";
     }
 }
 

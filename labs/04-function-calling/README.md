@@ -4,4 +4,4 @@
 dotnet run --project labs/04-function-calling
 ```
 
-Article: `articles/04/article.md`.
+The write-up is on the site: https://yashshah.ai/blog/function-calling-legal-research-tools

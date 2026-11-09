@@ -1,6 +1,5 @@
 using System.Text.Json;
 using LegalAiLab.Core;
-using LegalAiLab.Mcp;
 
 namespace LegalAiLab.Workflows;
 
@@ -16,140 +15,90 @@ public sealed class ResearchState
 
 public sealed class ResearchWorkflow
 {
-    private readonly LegalResearchLibrary _library;
+    private readonly CaseDiscovery _discovery;
+    private readonly JudgmentAnalysis _analysis = new();
+    private readonly CitationVerification _verification;
+    private readonly ResearchReportWriter _reports = new();
 
-    public ResearchWorkflow(LegalResearchLibrary library) => _library = library;
+    public ResearchWorkflow(LegalAiLab.Mcp.LegalResearchLibrary library)
+    {
+        _discovery = new CaseDiscovery(library);
+        _verification = new CitationVerification(library);
+    }
 
     public async Task<ResearchState> RunAsync(string question, ResearchState? resume = null)
     {
         var state = resume ?? new ResearchState { Question = question };
         if (AdviceGuard.IsDisallowed(question))
         {
-            state.Stage = "refused";
-            state.Report = Empty(question, "The question asks for advice or an outcome prediction.");
-            return state;
+            return Refuse(state, question);
         }
 
-        if (state.Stage is "new" or "discover")
-        {
-            var queries = Decompose(question);
-            var found = new List<RetrievedPassage>();
-            foreach (var query in queries)
-            {
-                var result = _library.SearchCases(query, "hybrid", 3);
-                if (result.Ok)
-                {
-                    found.AddRange(result.Value!);
-                }
-            }
-
-            state.Discovered = found
-                .GroupBy(p => p.ChunkId)
-                .Select(g => g.OrderByDescending(p => p.Score).First())
-                .Take(6)
-                .ToList();
-            state.Stage = state.Discovered.Count == 0 ? "insufficient" : "analyze";
-        }
-
+        DiscoverIfNeeded(state, question);
         if (state.Stage == "insufficient")
         {
-            state.Report = Empty(question, "The local corpus did not contain enough matching passages.");
+            state.Report = _reports.Empty(question, "The local corpus did not contain enough matching passages.");
             return state;
         }
 
-        if (state.Stage == "analyze")
-        {
-            var groups = state.Discovered.GroupBy(p => p.CaseId).Take(3).ToList();
-            var analyses = await Task.WhenAll(groups.Select(g => Task.Run(() =>
-                $"{g.Key} ({g.First().Citation}) has {g.Count()} retrieved passage(s). Synthetic={g.First().IsSynthetic}.")));
-            state.Analyses = analyses.ToList();
-            state.Stage = "verify";
-        }
-
-        if (state.Stage == "verify")
-        {
-            state.VerificationNotes.Clear();
-            foreach (var passage in state.Discovered)
-            {
-                var exact = _library.GetPassage(passage.ChunkId);
-                state.VerificationNotes.Add(exact.Ok
-                    ? $"verified {passage.ChunkId} against stored text"
-                    : $"missing {passage.ChunkId}");
-            }
-
-            var cited = state.Discovered.Select(p => p.CaseId).Distinct();
-            foreach (var caseId in cited)
-            {
-                var links = _library.FindCitedCases(caseId);
-                if (links.Ok && links.Value!.Count > 0)
-                {
-                    state.VerificationNotes.Add($"{caseId} string-cites {links.Value.Count} catalog case(s). Overruling is not inferred.");
-                }
-            }
-
-            state.Stage = "report";
-        }
-
-        if (state.Stage == "report")
-        {
-            state.Report = new ResearchReport
-            {
-                ReportId = Guid.NewGuid().ToString("n"),
-                Question = question,
-                CreatedUtc = DateTime.UtcNow.ToString("O"),
-                CasesConsidered = state.Discovered.Select(p => p.CaseId).Distinct().ToList(),
-                Findings = state.Analyses,
-                Evidence = state.Discovered,
-                CompetingInterpretations =
-                [
-                    "Passages can support more than one reading. This workflow does not choose a binding interpretation."
-                ],
-                Limitations =
-                [
-                    "The corpus is a small public subset plus fictional fixtures.",
-                    "Metadata-only judgments have no full text.",
-                    "Citation links are string matches, not a holding that one case overrules another.",
-                    ProductBoundary.Notice
-                ],
-                References = state.Discovered.Select(p => $"{p.Citation} {p.ChunkId}").Distinct().ToList(),
-                HumanReview = "Required before any reliance."
-            };
-            state.Stage = "completed";
-        }
-
+        await AnalyzeIfNeeded(state);
+        VerifyIfNeeded(state);
+        WriteIfNeeded(state, question);
         return state;
     }
 
-    public static IReadOnlyList<string> Decompose(string question)
+    public static IReadOnlyList<string> Decompose(string question) => new QueryDecomposer().Decompose(question);
+
+    private ResearchState Refuse(ResearchState state, string question)
     {
-        var parts = new List<string> { question };
-        if (question.Contains("privacy", StringComparison.OrdinalIgnoreCase))
-        {
-            parts.Add("Kharak Singh surveillance personal liberty");
-            parts.Add("Puttaswamy privacy");
-        }
-
-        if (question.Contains("speech", StringComparison.OrdinalIgnoreCase) || question.Contains("article 19", StringComparison.OrdinalIgnoreCase))
-        {
-            parts.Add("Romesh Thappar freedom of speech Madras");
-        }
-
-        return parts;
+        state.Stage = "refused";
+        state.Report = _reports.Empty(question, "The question asks for advice or an outcome prediction.");
+        return state;
     }
 
-    private static ResearchReport Empty(string question, string reason) => new()
+    private void DiscoverIfNeeded(ResearchState state, string question)
     {
-        ReportId = Guid.NewGuid().ToString("n"),
-        Question = question,
-        CreatedUtc = DateTime.UtcNow.ToString("O"),
-        CasesConsidered = [],
-        Findings = [reason],
-        Evidence = [],
-        CompetingInterpretations = [],
-        Limitations = [ProductBoundary.Notice],
-        References = [],
-        HumanReview = "Required."
-    };
+        if (state.Stage is not ("new" or "discover"))
+        {
+            return;
+        }
+
+        state.Discovered = _discovery.Discover(question);
+        state.Stage = state.Discovered.Count == 0 ? "insufficient" : "analyze";
+    }
+
+    private async Task AnalyzeIfNeeded(ResearchState state)
+    {
+        if (state.Stage != "analyze")
+        {
+            return;
+        }
+
+        state.Analyses = await _analysis.AnalyzeAsync(state.Discovered);
+        state.Stage = "verify";
+    }
+
+    private void VerifyIfNeeded(ResearchState state)
+    {
+        if (state.Stage != "verify")
+        {
+            return;
+        }
+
+        state.VerificationNotes = _verification.Verify(state.Discovered);
+        state.Stage = "report";
+    }
+
+    private void WriteIfNeeded(ResearchState state, string question)
+    {
+        if (state.Stage != "report")
+        {
+            return;
+        }
+
+        state.Report = _reports.Write(question, state);
+        state.Stage = "completed";
+    }
 }
 
 public sealed class SessionStore
@@ -164,13 +113,12 @@ public sealed class SessionStore
 
     public async Task SaveAsync(string sessionId, ResearchState state)
     {
-        var path = Path.Combine(_root, sessionId + ".json");
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(state));
+        await File.WriteAllTextAsync(PathFor(sessionId), JsonSerializer.Serialize(state));
     }
 
     public async Task<ResearchState?> LoadAsync(string sessionId)
     {
-        var path = Path.Combine(_root, sessionId + ".json");
+        var path = PathFor(sessionId);
         if (!File.Exists(path))
         {
             return null;
@@ -181,10 +129,12 @@ public sealed class SessionStore
 
     public void Delete(string sessionId)
     {
-        var path = Path.Combine(_root, sessionId + ".json");
+        var path = PathFor(sessionId);
         if (File.Exists(path))
         {
             File.Delete(path);
         }
     }
+
+    private string PathFor(string sessionId) => Path.Combine(_root, sessionId + ".json");
 }

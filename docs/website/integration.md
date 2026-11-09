@@ -12,4 +12,4 @@ When the site source is available:
 6. Leave the Research page unchanged.
 7. Do not add a peer-review claim.
 
-The articles in `articles/` are the website-ready Markdown.
+The articles live on the site, not in this repository.

@@ -4,4 +4,4 @@
 dotnet run --project labs/02-simple-rag
 ```
 
-Article: `articles/02/article.md`.
+The write-up is on the site: https://yashshah.ai/blog/simple-rag-over-court-judgments
