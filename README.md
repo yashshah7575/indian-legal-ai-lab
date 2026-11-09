@@ -1,5 +1,7 @@
 # Indian Legal AI Lab
 
+Repository: https://github.com/yashshah7575/indian-legal-ai-lab
+
 An educational .NET application for researching a small public subset of Indian Supreme Court judgments. It shows the path from a grounded summary to retrieval, tools, a JSON-RPC tool server, a bounded agent, a staged workflow, ingestion, checkpoints, and a Blazor UI.
 
 This is not a lawyer, not a prediction system, and not a filing tool.
