@@ -184,6 +184,54 @@ public class IngestionTests
     }
 }
 
+public class ProviderAndDurabilityTests
+{
+    [Fact]
+    public void Bm25_finds_kharak_singh()
+    {
+        var index = LegalIndex.FromRecords(CorpusLoader.Load());
+        var hits = index.Search("Kharak Singh domiciliary visits", "bm25", 1);
+        Assert.Equal("1962 INSC 389", hits[0].CaseId);
+    }
+
+    [Fact]
+    public async Task OpenAiCompatible_client_reads_choices()
+    {
+        var handler = new StubHandler("""{"choices":[{"message":{"content":"from-provider"}}]}""");
+        var client = new OpenAiCompatibleChatClient(new HttpClient(handler), new ModelProviderOptions { ChatBaseUrl = "http://localhost:11434/", ChatModel = "test" });
+        var response = await client.GetResponseAsync([new Microsoft.Extensions.AI.ChatMessage(Microsoft.Extensions.AI.ChatRole.User, "hello")]);
+        Assert.Equal("from-provider", response.Text);
+    }
+
+    [Fact]
+    public void Durable_queue_skips_a_completed_job_id()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "legal-queue-" + Guid.NewGuid().ToString("n"));
+        var queue = new FileIngestionQueue(root);
+        var record = CorpusLoader.Load().First(r => r.Text is not null);
+        var pipeline = new IngestionPipeline();
+        queue.Enqueue(new IngestionJob("job-1", record, 0));
+        Assert.Equal("completed", queue.ProcessNext(pipeline).Status);
+        queue.Enqueue(new IngestionJob("job-1", record, 0));
+        Assert.False(File.Exists(Path.Combine(root, "pending", "job-1.json")));
+    }
+
+    [Fact]
+    public async Task Session_id_rejects_path_traversal()
+    {
+        var store = new SessionStore(Path.Combine(Path.GetTempPath(), "legal-sess-" + Guid.NewGuid().ToString("n")));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SaveAsync("../etc", new ResearchState { Question = "q" }));
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        private readonly string _body;
+        public StubHandler(string body) => _body = body;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(_body) });
+    }
+}
+
 public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;

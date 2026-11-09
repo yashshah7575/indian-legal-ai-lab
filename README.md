@@ -1,39 +1,47 @@
 # Indian Legal AI Lab
 
+Educational research over a small public subset of Indian Supreme Court judgments. It is not legal advice and it does not predict outcomes.
+
 Repository: https://github.com/yashshah7575/indian-legal-ai-lab
 
-An educational .NET application for researching a small public subset of Indian Supreme Court judgments. It shows the path from a grounded summary to retrieval, tools, a JSON-RPC tool server, a bounded agent, a staged workflow, ingestion, checkpoints, and a Blazor UI.
+## Architecture
 
-This is not a lawyer, not a prediction system, and not a filing tool.
+`LegalAiLab.Core` holds records, the offline `GroundedChatClient`, and `OpenAiCompatibleChatClient`. `Ingestion` chunks text and can queue jobs on disk. `Retrieval` ranks with keyword, BM25, hashing vectors, or a hybrid of keyword and hashing vectors. Hashing vectors are an offline baseline, not a semantic embedding model. `Mcp` has a teaching JSON handler and `OfficialMcpHost` on the official MCP C# SDK 1.4.0. `Agents` runs a fixed tool loop. `Workflows` runs staged research and stores sessions as JSON.
 
 ## Run
 
 ```bash
 dotnet test
-dotnet run --project labs/01-llm-fundamentals
 dotnet run --project src/LegalAiLab.Api --urls http://127.0.0.1:5088
 dotnet run --project src/LegalAiLab.Web --urls http://127.0.0.1:5089
 ```
 
-Open `http://127.0.0.1:5089/search?q=Romesh%20Thappar`.
+The Blazor research form runs only after you submit it.
 
-The solution targets `net8.0` (`global.json` asks for SDK 8.0.403 or a later 8.0 feature band). .NET 10 was not installed on the build machine.
+## Live model
+
+Set `LEGALAI_CHAT_BASE_URL` to an OpenAI-compatible base such as `http://localhost:11434/` for Ollama, and optionally `LEGALAI_CHAT_MODEL` and `LEGALAI_API_KEY`. The default labs do not call that client. No live model was executed in the recorded test run.
+
+Official MCP stdio host:
+
+```bash
+dotnet run --project src/LegalAiLab.McpHost
+```
+
+That host project is added only if present. See `OfficialMcpHost` in `LegalAiLab.Mcp`.
+
+## Tests
+
+`dotnet test` is offline. The last recorded run was 21 passed, 0 failed.
+
+## Tutorials
+
+The articles are published on https://yashshah.ai/publications. Each lab README links to its article.
+
+## Limits
+
+Docker was not available, so pgvector was not started. The agent loop does not ask a model to choose tools. Semantic embeddings are not included.
 
 ## Data
 
-`sample-data/manifest.json` is checksummed. It includes extracted text for Romesh Thappar (`1950INSC14`) and Kharak Singh (`1962 INSC 389`), metadata for several other public judgments, and fictional fixtures whose titles start with `FICTIONAL`.
-
-Source: [Indian Supreme Court Judgments on AWS](https://registry.opendata.aws/indian-supreme-court-judgments/), CC-BY-4.0. The national corpus is not loaded. Court websites were not scraped.
-
-`PublicBucketBootstrap` can download one metadata JSON from the public HTTPS endpoint when you pass a year and a `.json` file name.
-
-## Layout
-
-- Write-ups for the twelve labs are published on https://yashshah.ai/publications
-- `labs/01-llm-fundamentals` through `labs/12-production`
-- `src/LegalAiLab.*` — core, ingestion, retrieval, MCP tools, agent, workflow, API, Blazor
-- `docs/evaluations/results.md` — commands that were actually run
-
-## Not claimed
-
-Hosted-model quality, IndicLegalQA scores, a completed Docker run, Microsoft Agent Framework, the official MCP SDK, and any edit to yashshah.ai. Integration notes are in `docs/website/integration.md`.
+[Indian Supreme Court Judgments](https://registry.opendata.aws/indian-supreme-court-judgments/), CC-BY-4.0. Two extracted judgments are vendored. Other rows are metadata. Fictional fixtures are titled `FICTIONAL`. See `LICENSE`.

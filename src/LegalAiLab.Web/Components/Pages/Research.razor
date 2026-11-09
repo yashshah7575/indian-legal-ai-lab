@@ -3,8 +3,9 @@
 @inject SessionStore Sessions
 <PageTitle>Research</PageTitle>
 <p class="notice">@ProductBoundary.Notice</p>
-<form method="get">
-    <label>Question <input name="question" value="@Question" size="80" /></label>
+<p class="notice">This page runs the offline workflow only after you submit the form. Opening the URL does not start research.</p>
+<form method="post">
+    <label>Question <input name="Question" value="@Question" size="80" /></label>
     <button type="submit">Run workflow</button>
 </form>
 @if (_state?.Report is { } report)
@@ -22,10 +23,10 @@
     <p><a href="@($"/history?session={_id}")">Open saved session</a></p>
 }
 @code {
-    [SupplyParameterFromQuery(Name = "question")] public string? Question { get; set; }
+    [SupplyParameterFromForm] public string? Question { get; set; }
     private ResearchState? _state;
     private string? _id;
-    protected override async Task OnParametersSetAsync()
+    protected override async Task OnInitializedAsync()
     {
         if (string.IsNullOrWhiteSpace(Question)) return;
         _state = await Workflow.RunAsync(Question);

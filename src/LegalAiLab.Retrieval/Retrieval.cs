@@ -101,6 +101,7 @@ public sealed class LegalIndex
         return method switch
         {
             "keyword" => rows.Select(row => (_keywords.Score(query, row.Chunk.Text), row.Chunk, row.Record)),
+            "bm25" => new Bm25Scorer().Score(query, rows),
             "vector" => ScoreVector(query, rows),
             "hybrid" => ScoreHybrid(query, rows),
             _ => throw new ArgumentException($"Unknown retrieval method '{method}'.")

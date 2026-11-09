@@ -113,7 +113,10 @@ public sealed class SessionStore
 
     public async Task SaveAsync(string sessionId, ResearchState state)
     {
-        await File.WriteAllTextAsync(PathFor(sessionId), JsonSerializer.Serialize(state));
+        var path = PathFor(sessionId);
+        var temp = path + ".tmp";
+        await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(state));
+        File.Move(temp, path, overwrite: true);
     }
 
     public async Task<ResearchState?> LoadAsync(string sessionId)
@@ -136,5 +139,13 @@ public sealed class SessionStore
         }
     }
 
-    private string PathFor(string sessionId) => Path.Combine(_root, sessionId + ".json");
+    private string PathFor(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId) || sessionId.Any(ch => !char.IsLetterOrDigit(ch)))
+        {
+            throw new ArgumentException("Session id must be letters and digits.");
+        }
+
+        return Path.Combine(_root, sessionId + ".json");
+    }
 }
