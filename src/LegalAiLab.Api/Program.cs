@@ -15,6 +15,8 @@ public class Program
         builder.Services.AddSingleton<ResearchWorkflow>();
         builder.Services.AddSingleton(new SessionStore(Path.Combine(builder.Environment.ContentRootPath, "data", "sessions")));
         builder.Services.AddSingleton<IngestionPipeline>();
+        builder.Services.AddSingleton(new FileIngestionQueue(Path.Combine(builder.Environment.ContentRootPath, "data", "ingestion")));
+        builder.Services.AddProblemDetails();
         builder.Services.AddOpenTelemetry().WithTracing(tracing =>
         {
             tracing.AddAspNetCoreInstrumentation();
@@ -44,8 +46,30 @@ public class Program
             return meta.Ok ? Results.Ok(meta) : Results.NotFound(meta);
         });
 
-        app.MapPost("/research", async (ResearchRequest request, ResearchWorkflow workflow, SessionStore sessions) =>
+        app.Use(async (context, next) =>
         {
+            var token = builder.Configuration["Api:Token"];
+            var path = context.Request.Path.Value ?? "";
+            var sensitive = HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method);
+            if (!string.IsNullOrWhiteSpace(token) && sensitive && path is not "/health")
+            {
+                if (context.Request.Headers["X-Api-Key"] != token)
+                {
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return;
+                }
+            }
+
+            await next();
+        });
+        app.MapPost("/research", async (ResearchRequest request, ResearchWorkflow workflow, SessionStore sessions, CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Question))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["question"] = ["A question is required."] });
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
             var state = await workflow.RunAsync(request.Question);
             var id = Guid.NewGuid().ToString("n");
             await sessions.SaveAsync(id, state);
@@ -64,8 +88,13 @@ public class Program
             return Results.NoContent();
         });
 
-        app.MapPost("/ingest", (IngestRequest request, LegalResearchLibrary library, IngestionPipeline pipeline) =>
+        app.MapPost("/ingest", (IngestRequest request, LegalResearchLibrary library, IngestionPipeline pipeline, FileIngestionQueue queue) =>
         {
+            if (string.IsNullOrWhiteSpace(request.CaseId))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["caseId"] = ["A case id is required."] });
+            }
+
             var record = library.Find(request.CaseId);
             if (record is null)
             {
@@ -73,8 +102,8 @@ public class Program
             }
 
             var jobId = request.JobId ?? record.CaseId;
-            pipeline.Enqueue(new IngestionJob(jobId, record, request.FailTimes));
-            var outcome = pipeline.ProcessNext();
+            queue.Enqueue(new IngestionJob(jobId, record, request.FailTimes));
+            var outcome = queue.ProcessNext(pipeline);
             return Results.Ok(outcome);
         });
 

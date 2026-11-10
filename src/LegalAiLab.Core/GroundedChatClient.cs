@@ -92,4 +92,28 @@ public static class CitationChecker
 
         return found;
     }
+
+    public static IReadOnlyList<CitationFinding> Assess(string text, IEnumerable<JudgmentRecord> catalog, IEnumerable<string> passageTexts)
+    {
+        var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in catalog)
+        {
+            known.Add(record.Citation);
+            known.Add(record.CaseId);
+            known.Add(record.NeutralCitation);
+        }
+
+        var passages = string.Join("\n", passageTexts);
+        var findings = new List<CitationFinding>();
+        var pattern = System.Text.RegularExpressions.Regex.Matches(text, @"FICTIONAL\s+\d{4}\s+SYN\s+\d+|(?:19|20)\d{2}\s+INSC\s+\d+|\[\d{4}\]\s+\d+\s+S\.C\.R\.\s+\d+");
+        foreach (System.Text.RegularExpressions.Match match in pattern)
+        {
+            var value = System.Text.RegularExpressions.Regex.Replace(match.Value, @"\s+", " ");
+            findings.Add(new CitationFinding(value, known.Contains(value), passages.Contains(value, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return findings;
+    }
 }
+
+public sealed record CitationFinding(string Text, bool ExistsInCatalog, bool SupportedByPassage);

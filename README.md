@@ -6,7 +6,7 @@ Repository: https://github.com/yashshah7575/indian-legal-ai-lab
 
 ## Architecture
 
-`LegalAiLab.Core` holds records, the offline `GroundedChatClient`, and `OpenAiCompatibleChatClient`. `Ingestion` chunks text and can queue jobs on disk. `Retrieval` ranks with keyword, BM25, hashing vectors, or a hybrid of keyword and hashing vectors. Hashing vectors are an offline baseline, not a semantic embedding model. `Mcp` has a teaching JSON handler and `OfficialMcpHost` on the official MCP C# SDK 1.4.0. `Agents` runs a fixed tool loop. `Workflows` runs staged research and stores sessions as JSON.
+`LegalAiLab.Core` holds records, the offline `GroundedChatClient`, and `OpenAiCompatibleChatClient`. `Ingestion` chunks text and can queue jobs on disk. `Retrieval` ranks with keyword, BM25, hashing vectors, or a hybrid of keyword and hashing vectors. Hashing vectors are an offline baseline, not a semantic embedding model. `Mcp` hosts tools with the official MCP C# SDK 1.4.0. Lab 05 prints that host command and a teaching JSON handler. The integration test starts `LegalAiLab.McpHost` over stdio. `Agents` uses a model tool call when the injected `IChatClient` returns `FunctionCallContent` for `search_cases`. Otherwise it runs the fixed search, judgment, and statute sequence. Each run gets a new tool budget. `Workflows` runs staged research and stores sessions as JSON.
 
 ## Run
 
@@ -32,7 +32,7 @@ That host project is added only if present. See `OfficialMcpHost` in `LegalAiLab
 
 ## Tests
 
-`dotnet test` is offline. The last recorded run was 21 passed, 0 failed.
+`dotnet test` is offline. Re-run it and record the count from that run. Do not treat an older count as current.
 
 ## Tutorials
 

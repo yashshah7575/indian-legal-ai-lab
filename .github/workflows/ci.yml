@@ -10,4 +10,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - run: dotnet test LegalAiLab.sln --nologo
+      - run: dotnet build LegalAiLab.sln --nologo
+      - run: dotnet format LegalAiLab.sln --verify-no-changes --no-restore -v q
+      - run: dotnet test LegalAiLab.sln --nologo --no-build

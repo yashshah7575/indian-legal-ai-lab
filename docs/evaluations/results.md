@@ -2,7 +2,7 @@
 
 Recorded on this machine after `dotnet test tests/LegalAiLab.Tests/LegalAiLab.Tests.csproj`.
 
-- Result: Passed. Failed 0, Passed 17, Skipped 0.
+- Result: Passed. Failed 0, Passed 27, Skipped 0. Earlier notes of 17 and 21 are historical.
 - Runtime: .NET 8 (`8.0.403` is the SDK selected by `global.json`; newer 8.0 feature-band SDKs are allowed).
 - Hosted LLM: not called.
 - IndicLegalQA: not downloaded.

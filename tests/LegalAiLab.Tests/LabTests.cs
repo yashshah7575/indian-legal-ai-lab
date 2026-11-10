@@ -250,6 +250,133 @@ public class ApiTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task Agent_budget_resets_between_runs()
+    {
+        var agent = new ResearchAgent(new LegalResearchLibrary(), maxCalls: 3);
+        var first = await agent.RunAsync("Romesh Thappar freedom of speech");
+        var second = await agent.RunAsync("Romesh Thappar freedom of speech");
+        Assert.Equal("completed", first.Outcome);
+        Assert.Equal("completed", second.Outcome);
+    }
+
+    [Fact]
+    public async Task Agent_executes_a_model_selected_tool()
+    {
+        var chat = new SelectingChat();
+        var agent = new ResearchAgent(new LegalResearchLibrary(), chat: chat);
+        var result = await agent.RunAsync("speech");
+        Assert.Contains(result.Logs, log => log.Tool == "search_cases" && log.Ok);
+        Assert.Equal("completed", result.Outcome);
+    }
+
+    [Fact]
+    public void Citation_existence_is_not_passage_support()
+    {
+        var catalog = CorpusLoader.Load();
+        var findings = CitationChecker.Assess("[1950] 1 S.C.R. 594", catalog, ["no citation in this passage"]);
+        Assert.True(findings[0].ExistsInCatalog);
+        Assert.False(findings[0].SupportedByPassage);
+    }
+
+    [Fact]
+    public async Task Embedding_without_a_provider_is_labeled_offline()
+    {
+        var result = await new EmbeddingService().EmbedAsync("freedom of speech");
+        Assert.False(result.IsSemantic);
+        Assert.Equal("hash-offline", result.Provider);
+        Assert.Equal(64, result.Vector.Length);
+    }
+
+    [Fact]
+    public async Task Chat_client_streams_deltas_and_reads_tool_calls()
+    {
+        var stream = new StreamHandler("data: {\"choices\":[{\"delta\":{\"content\":\"ab\"}}]}\n\ndata: [DONE]\n");
+        var client = new OpenAiCompatibleChatClient(new HttpClient(stream), new ModelProviderOptions { ChatBaseUrl = "http://localhost:9/", ChatModel = "m" });
+        var parts = new List<string?>();
+        await foreach (var update in client.GetStreamingResponseAsync([new Microsoft.Extensions.AI.ChatMessage(Microsoft.Extensions.AI.ChatRole.User, "q")]))
+        {
+            parts.Add(update.Text);
+        }
+
+        Assert.Contains("ab", parts);
+        var tools = new ToolHandler("""{"choices":[{"message":{"content":"","tool_calls":[{"id":"1","function":{"name":"search_cases","arguments":"{\"query\":\"speech\"}"}}]}}]}""");
+        var toolClient = new OpenAiCompatibleChatClient(new HttpClient(tools), new ModelProviderOptions { ChatBaseUrl = "http://localhost:9/", ChatModel = "m" });
+        var response = await toolClient.GetResponseAsync([new Microsoft.Extensions.AI.ChatMessage(Microsoft.Extensions.AI.ChatRole.User, "q")]);
+        Assert.Contains(response.Messages.SelectMany(message => message.Contents), content => content is Microsoft.Extensions.AI.FunctionCallContent);
+    }
+
+    [Fact]
+    public async Task Mcp_stdio_client_lists_and_calls_search()
+    {
+        var project = FindProject("src/LegalAiLab.McpHost/LegalAiLab.McpHost.csproj");
+        var transport = new ModelContextProtocol.Client.StdioClientTransport(new ModelContextProtocol.Client.StdioClientTransportOptions
+        {
+            Command = "dotnet",
+            Arguments = ["run", "--project", project, "--no-build"]
+        });
+        await using var client = await ModelContextProtocol.Client.McpClient.CreateAsync(transport);
+        var tools = await client.ListToolsAsync();
+        Assert.Contains(tools, tool => tool.Name == "search_cases");
+        var called = await client.CallToolAsync("lookup_statute", new Dictionary<string, object?> { ["query"] = "Article 21" });
+        Assert.Contains("Article 21", System.Text.Json.JsonSerializer.Serialize(called), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FindProject(string relative)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, relative);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException(relative);
+    }
+
+    private sealed class SelectingChat : Microsoft.Extensions.AI.IChatClient
+    {
+        private int _calls;
+        public Task<Microsoft.Extensions.AI.ChatResponse> GetResponseAsync(IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages, Microsoft.Extensions.AI.ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            _calls++;
+            if (_calls == 1)
+            {
+                var message = new Microsoft.Extensions.AI.ChatMessage(Microsoft.Extensions.AI.ChatRole.Assistant, "");
+                message.Contents.Add(new Microsoft.Extensions.AI.FunctionCallContent("1", "search_cases", new Dictionary<string, object?> { ["query"] = "Romesh Thappar freedom of speech" }));
+                return Task.FromResult(new Microsoft.Extensions.AI.ChatResponse(message));
+            }
+
+            return new GroundedChatClient().GetResponseAsync(messages, options, cancellationToken);
+        }
+
+        public IAsyncEnumerable<Microsoft.Extensions.AI.ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages, Microsoft.Extensions.AI.ChatOptions? options = null, CancellationToken cancellationToken = default)
+            => new GroundedChatClient().GetStreamingResponseAsync(messages, options, cancellationToken);
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public void Dispose() { }
+    }
+
+    private sealed class StreamHandler : HttpMessageHandler
+    {
+        private readonly string _body;
+        public StreamHandler(string body) => _body = body;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(_body) });
+    }
+
+    private sealed class ToolHandler : HttpMessageHandler
+    {
+        private readonly string _body;
+        public ToolHandler(string body) => _body = body;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(_body, System.Text.Encoding.UTF8, "application/json") });
+    }
+
+    [Fact]
     public async Task Research_refuses_prediction()
     {
         var client = _factory.CreateClient();
